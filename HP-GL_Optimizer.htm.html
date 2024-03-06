@@ -1,0 +1,447 @@
+﻿<!doctype html>
+<html>
+<head>
+
+	<meta http-equiv="expires" content="0">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sinnvoll HP-GL erstellen..</title>
+	
+	<style type="text/css">
+	body{background-color:rgb(250,250,250);font: 12px "Trebuchet MS", sans-serif; font-weight: bold; line-height: 15px;}
+	#startLayout{width:97vw; height:95vh;justify-content:center;display:flex;align-items:center;}
+	#plt_code{background-color:#dcd8f136;float:left;margin-right:18px;margin-bottom:6px;border:1px solid black; outline: none; border-radius: 7px; width: 180px; height: 300px;resize: none; z-index:0; }
+	#palette{position:absolute;left:230px;top:239px;width:155px;height:22px;background-color:lightgrey;z-index:2;}
+	.exportcolors{position:absolute;width:16px;height:16px;top:2px;border:1px solid black;}
+	.farben{box-shadow:1px 1px grey inset;font-size:14px;color:white;width:16px; height:22px; position:absolute; top:4px; justify-content:center;display:flex;align-items:center;}
+	a{color:black;border:0px;text-decoration:none;}
+	@keyFrames slideIn {
+	0% {transform: translateX(-100%);}
+	100% {transform: translateX(0);}
+	}
+	.slide{animation: 0.8s ease-out 0s 1 slideIn;}	
+	.hide {visibility: hidden;}
+	.weg {display: none;}
+	.show {visibility: show; }
+	#can{transform: scaleY(-1); position: absolute; left:0px; top: 30px; z-index:1;}
+	u{text-decoration:none;}
+	i{ text-decoration:underline; line-height: 30px; letter-spacing: .5px;}
+	</style>
+	
+<script>
+var plt="", alleFräsbahnen, alleFräsbahnenPunkte, firstPaint=true, konturenSichtbar=true, penColors=['lightgrey','black','blue','red','green','magenta','yellow','cyan','brown'],
+nullpunkt=[], umrandungsRect=[], isSecure=window.isSecureContext, teil=-1, kontur=-1, allesNötigeGefunden=false,
+zusammengehörigeBahnenStrings=[], geordneteFrästeileIndizes=[], frästeileStartPunkte=[], frästeileMittelPunkte=[], eingeordneteStiftFarbenZahlen=[];
+
+function fehler(s){document.body.innerHTML=s;}
+function c(s){console.log(s);}
+function _getEl(name){return document.getElementById(name);}
+function _createSheet() {
+let doc=document;
+let sheet=doc.createElement('style');
+doc.head.appendChild(sheet);
+return sheet;
+}
+
+function _errechneAbstand(xAbstand,yAbstand) {return Math.sqrt(xAbstand*xAbstand+yAbstand*yAbstand)}
+function _errechneDifferenz(x1,x2) {if(x1>x2) return x1-x2; else return x2-x1}
+
+function _stringContains(string, s){
+//c('_stringContains: '+string+', '+s);
+if(string.indexOf(s)>-1) return true; return false;
+}
+function _cutOff(string, sToCut){
+if(_stringContains(string, sToCut)) return string.substring(0, string.indexOf(sToCut)) + string.substring(string.indexOf(sToCut)+sToCut.length, string.length);
+return string;
+}
+function zeigStrings(strings, Überschrift){for(let i=0;i<strings.length;i++) c(Überschrift+'['+i+']:\n+++'+strings[i]+'+++');}
+function _equals(sWort1, sWort2) {return  sWort1.indexOf(sWort2)>-1 && sWort1.length==sWort2.length;}
+function _schneideFormAus_alleformen_raus(badFormString) {
+let badRetourString;
+for(let i=0;i<alleFräsbahnen.length;i++) {
+	if(_stringContains(alleFräsbahnen[i], badFormString)) {
+		badRetourString=alleFräsbahnen[i];
+		if(i>0) alleFräsbahnen[i]=alleFräsbahnen[0];
+		break;
+	}
+}
+alleFräsbahnen.shift();//1. element abschneiden: (pop(): letztes abschneiden)
+return badRetourString;
+}
+function _rechteckStringsMachen(stiftFarbe) {//checkt, obs ein Rechteck ist und gibts zurück
+let rects=[];
+for(let i=0;i<alleFräsbahnen.length;i++) {
+	if(_stringContains(alleFräsbahnen[i], stiftFarbe) && alleFräsbahnen[i].split(';').length == 7) {
+		let zumBohren=false;
+		if(_equals(stiftFarbe,'SP8;\n')) {//zum Bohren? :
+			let r=_checkRechteckAufKorrekteAusrichtung(_makeFormenDatenAusStrings([alleFräsbahnen[i]]));
+			if( Math.abs(r[0][1][0]-r[0][0][0])==40 && Math.abs(r[0][2][1]-r[0][1][1])==40 ) {//0,5 mm Auflösung beim plt-Export in Corel
+				alleFräsbahnen[i]='SP8;\nPU'+r[0][0][0]+' '+r[0][0][1]+';\nPD'+(r[0][0][0]+1)+' '+r[0][0][1]+';\n';
+				zumBohren=true;
+			}
+		}
+		if(!zumBohren) rects.push(alleFräsbahnen[i]);
+	}
+}
+return rects;
+}
+function _checkRechteckAufKorrekteAusrichtung(rects) {//nur für Rechtecke!
+let correct=[];//c('rect.lenngth: '+rect.length);
+for(let i=0;i<rects.length;i++) {
+	correct[i]=[];
+	let linieLinks=_ermittelKleinsteOderGrößteZahl(rects[i], 'kleinste', 0);
+	let linieRechts=_ermittelKleinsteOderGrößteZahl(rects[i], 'biggest', 0);
+	let linieUnten=_ermittelKleinsteOderGrößteZahl(rects[i], 'kleinste', 1);
+	let linieOben=_ermittelKleinsteOderGrößteZahl(rects[i], 'biggest', 1);
+	correct[i][0]=[linieLinks, linieUnten];
+	correct[i][1]=[linieRechts, linieUnten];
+	correct[i][2]=[linieRechts, linieOben];
+	correct[i][3]=[linieLinks, linieOben];
+}
+return correct;
+}
+function _ermittelKleinsteOderGrößteZahl(rect, sGrößteOderKleinste, xOderYIndex){
+let smallestOrBiggest, bKleinste=true;
+if(_equals(sGrößteOderKleinste,'kleinste')) smallestOrBiggest=1000000;
+else {
+	smallestOrBiggest=0;
+	bKleinste=false;
+}
+for(let i=0;i<rect.length && bKleinste;i++) {
+	if(rect[i][xOderYIndex]<smallestOrBiggest) smallestOrBiggest=rect[i][xOderYIndex];
+}
+for(let i=0;i<rect.length && !bKleinste;i++) {
+	if(rect[i][xOderYIndex]>smallestOrBiggest) smallestOrBiggest=rect[i][xOderYIndex];
+}
+return smallestOrBiggest;
+}
+function _umrandungSuchen() {//findet Umrandung und streicht den String aus alleFräsbahnen, setzt nullpunkt und gibt umrandungsRect-String zurück
+let maxL=100000, maxR=0, maxO=0, maxU=100000, i_maxL, i_maxR, i_maxO, i_maxU, schwarze_RechteckeStrings, schwarzeRechtecke,
+fehlerStr='Das schwarze Umrandungs-Rechteck fehlt! Es muss in Corel <br>unbedingt um alle anderen Fräsformen herum gezeichnet werden.';
+
+schwarze_RechteckeStrings=_rechteckStringsMachen('SP1;\n');
+if(schwarze_RechteckeStrings.length==0) fehler(fehlerStr);
+else {
+	schwarzeRechtecke=_checkRechteckAufKorrekteAusrichtung(_makeFormenDatenAusStrings(schwarze_RechteckeStrings));
+
+	//am weitesten linkes rechteck finden:
+	for(let i=0;i<schwarzeRechtecke.length;i++) {
+		let r=schwarzeRechtecke[i];
+		if(r[0][0]<maxL){maxL=r[0][0];i_maxL=i;}
+		if(r[1][0]>maxR){maxR=r[1][0];i_maxR=i;}
+		if(r[2][1]>maxO){maxO=r[2][1];i_maxO=i;}
+		if(r[0][1]<maxU){maxU=r[0][1];i_maxU=i;}		
+	}
+	if( ((i_maxL + i_maxR + i_maxU + i_maxO)/4) == i_maxR ) {//Umrandung gefunden
+		umrandungsRect=schwarzeRechtecke[i_maxL];
+		nullpunkt[0]=maxL;
+		nullpunkt[1]=_ermittelKleinsteOderGrößteZahl(umrandungsRect, 'kleinste', 1);
+
+		return _schneideFormAus_alleformen_raus(schwarze_RechteckeStrings[i_maxL]);
+	}
+	else fehler(fehlerStr);
+}
+}
+function _makeFormenDatenAusStrings(formenStrings) {//gibt dreidim. Array zurück (Nummer zwei besteht aus einem zweier-Array (x- und y-Koordinaten jedes Punktes))
+let rectDataInStrings=[], formen=[];
+
+for(let i=0;i<formenStrings.length;i++) {
+	let rectString=formenStrings[i].substring(formenStrings[i].indexOf('PU'), formenStrings[i].length);
+	let points=rectString.split(';\n');
+	//points.pop();
+	rectDataInStrings[i]=[];
+	for(let u=0;u<points.length;u++) rectDataInStrings[i][u]=points[u].substring(2, points[u].length).split(' ');
+	rectDataInStrings[i].pop();
+}
+for(let i=0;i<formenStrings.length;i++) {
+	formen[i]=[];
+	for(let u=0;u<rectDataInStrings[i].length;u++) {
+		formen[i][u]=[];
+		formen[i][u][0]=parseInt(rectDataInStrings[i][u][0]);
+		formen[i][u][1]=parseInt(rectDataInStrings[i][u][1]);
+	}
+	//zeigStrings(formen[i], 'formen['+i+']');
+}
+return formen;
+}
+function ordneZusammengehörigeFormen() {//erstellt zusammengehörigeBahnenStrings sowie die dazu gehörigen eingeordneteStiftFarbenZahlen
+let brauneRechteckeStrings=_rechteckStringsMachen('SP8;\n'), brauneRechtecke;
+
+if(brauneRechteckeStrings.length==0) fehler('Es wurde kein braunes Rechteck gefunden!<br>Jedes Frästeil muss in Corel mit einem braunen Rechteck umgeben werden.');
+else {
+	for(let i=0;i<brauneRechteckeStrings.length;i++) _schneideFormAus_alleformen_raus(brauneRechteckeStrings[i]);
+	brauneRechtecke=_checkRechteckAufKorrekteAusrichtung(_makeFormenDatenAusStrings(brauneRechteckeStrings));
+	//zeigStrings(brauneRechtecke,'brauneRechtecke');
+
+	alleFräsbahnenPunkte=_makeFormenDatenAusStrings(alleFräsbahnen);
+
+	for(let i=0;i<brauneRechtecke.length;i++) {
+		let linieLinks=brauneRechtecke[i][0][0], linieRechts=brauneRechtecke[i][1][0], linieUnten=brauneRechtecke[i][0][1];
+		let linieOben=brauneRechtecke[i][2][1];
+		zusammengehörigeBahnenStrings[i]=[];
+		eingeordneteStiftFarbenZahlen[i]=[];
+		frästeileStartPunkte[i]=[linieLinks, linieUnten];
+		frästeileMittelPunkte[i]=[(linieRechts+linieLinks)/2, (linieUnten+linieOben)/2];
+		
+		for(let u=0;u<alleFräsbahnen.length;u++) {
+			let passt=true;
+			for(let o=0;o<alleFräsbahnenPunkte[u].length;o++) {
+				let x=alleFräsbahnenPunkte[u][o][0], y=alleFräsbahnenPunkte[u][o][1];
+				if(! (x>=linieLinks && x<=linieRechts && y>=linieUnten && y<=linieOben) ) {
+					passt=false;
+					break;
+				}
+			}
+			if(passt) {
+				zusammengehörigeBahnenStrings[i]=zusammengehörigeBahnenStrings[i].concat(alleFräsbahnen[u]);
+				eingeordneteStiftFarbenZahlen[i]=eingeordneteStiftFarbenZahlen[i].concat( parseInt(alleFräsbahnen[u].substring(2,alleFräsbahnen[u].indexOf(';'))) );
+				//c('Treffer!');
+			}		
+		}
+	}
+	ordneFräsreihenfolgen();
+	allesNötigeGefunden=true;
+}
+}
+function ordneFräsreihenfolgen() {
+let geordneteFormenStringsIndizes=[];
+
+for(let i=0;i<zusammengehörigeBahnenStrings.length;i++) {
+	geordneteFormenStringsIndizes[i]=[];
+	for(let num=1;num<=8;num++) {
+		for(let u=0;u<eingeordneteStiftFarbenZahlen[i].length;u++){
+				if(num==eingeordneteStiftFarbenZahlen[i][u]) geordneteFormenStringsIndizes[i].push(u);
+		}
+	}	
+}
+
+let _indexDesNächstenPunkts=function (startPunkt) {
+let kleinsterAbstand=100000, indexDesNächstenZiels;
+for(let i=0;i<frästeileMittelPunkte.length;i++) {	
+	let ok=true, abstand=_errechneAbstand( _errechneDifferenz(startPunkt[0], frästeileMittelPunkte[i][0]), _errechneDifferenz(startPunkt[1],frästeileMittelPunkte[i][1]) );
+	for(let u=0;u<geordneteFrästeileIndizes.length;u++){
+		if(i==geordneteFrästeileIndizes[u]) {
+			ok=false;
+			break;
+		}
+	}
+	if(ok && abstand<=kleinsterAbstand) {
+		kleinsterAbstand=abstand;
+		indexDesNächstenZiels=i;
+	}
+}
+return indexDesNächstenZiels;
+}
+
+geordneteFrästeileIndizes[0]=_indexDesNächstenPunkts(nullpunkt);
+let durchgänge=frästeileMittelPunkte.length-1;
+let lastPoint=frästeileMittelPunkte[geordneteFrästeileIndizes[0]];
+for(let i=1;i<=durchgänge;i++) {
+	geordneteFrästeileIndizes[i]=_indexDesNächstenPunkts(lastPoint);
+	lastPoint=frästeileMittelPunkte[geordneteFrästeileIndizes[i]];
+}
+
+for(let i=0;i<geordneteFrästeileIndizes.length;i++) {
+	let index=geordneteFrästeileIndizes[i];
+	let strings=zusammengehörigeBahnenStrings[index];
+	for(let u=0;u<strings.length;u++){
+		let nächsterIndex=geordneteFormenStringsIndizes[index][u];
+		plt=plt.concat('LT;\n'+strings[nächsterIndex]);
+	}
+}
+}
+function sort(){
+alleFräsbahnen=_getEl("plt_code").value.replace("SP0;", "").split('LT;\n');
+alleFräsbahnen.shift();//erster index (IN;\n)weg
+
+for(let i=0;i<alleFräsbahnen.length;i++) {//verschmolzene Formen trennen:
+	let fräsbahn=alleFräsbahnen[i].split('PU');
+	if(fräsbahn.length>2) {//mehrere PUs:
+		let farbCodezeile=fräsbahn[0];
+		fräsbahn.shift();//SP1 etc. ab
+		for(let u=0;u<fräsbahn.length;u++) {
+			alleFräsbahnen.push(farbCodezeile+'PU'+fräsbahn[u]);
+		}
+		if(i>0) alleFräsbahnen[i]=alleFräsbahnen[0];
+		alleFräsbahnen.shift();
+		--i;
+	}
+}
+
+plt=plt.concat(_umrandungSuchen());
+if(umrandungsRect.length>0) {
+	ordneZusammengehörigeFormen();
+	if(allesNötigeGefunden) {
+		alleFräsbahnen=plt.split('LT;\n');
+		alleFräsbahnen.shift();//erster index umrandungsrect weg
+		alleFräsbahnenPunkte=_makeFormenDatenAusStrings(alleFräsbahnen);
+
+		paintPlt();
+	}
+}
+}
+function zeigKontur(i,u) {teil=i; kontur=u; paintPlt();}
+function paintPlt(){
+let x, y, faktor, bgColor="#fafafa", foregroundColor='#eff4f6',
+can, ctx,
+width=umrandungsRect[1][0]-nullpunkt[0], height=umrandungsRect[2][1]-nullpunkt[1],
+colorIndizes=[], html='',
+_givePenColor=function(index){let bahn=alleFräsbahnen[index];return parseInt( bahn.substring(bahn.indexOf('SP')+2, bahn.indexOf(';')) );},
+counter=0, numOfFrästeile=frästeileStartPunkte.length, abstand=-8, clickedNum=-1;
+
+for(let i=0;i<numOfFrästeile;i++) {//setze clickedNum (wenn nötig) und farbige Kästchen für jedes Frästeil (mit konturen)
+	let num=zusammengehörigeBahnenStrings[geordneteFrästeileIndizes[i]].length;
+	for(let u=0;u<num;u++) {
+		colorIndizes[counter]=_givePenColor(counter);
+		let farbe=penColors[colorIndizes[counter]];
+		if(teil>-1) {//angeklickt
+			if(i!=teil||u!=kontur) farbe=penColors[0];
+			else if(i==teil&&u==kontur) clickedNum=counter;
+		}
+		if(u==0) {			
+			html=html.concat('<div class="farben" style="color: black; left:'+(abstand+17)+'px; background-color:white; box-shadow: none;">Nr.'+(i+1)+'</div>');
+			abstand+=43;
+		}
+		html=html.concat('<div id="'+i+'_'+u+'" class="farben" style="left:'+abstand+'px; background-color:'+farbe+'">'+
+		'<a href="javascript:;" style="color:white;">'+colorIndizes[counter]+'</a></div>');
+		++counter;
+		abstand+=18;
+	}	
+}
+
+_createSheet().innerHTML='#text{position: absolute; left:10px; top: '+(innerHeight-35)+'px;}';
+document.body.innerHTML='<div id="text" style="font-size: 12px; line-height: 14px;"></div><canvas id="can" width="'+innerWidth+'" height="'+(innerHeight-70)+'"></canvas>'+html;
+
+for(let i=0;i<numOfFrästeile;i++) {//setze farbige Kästchen auf click:
+	let num=zusammengehörigeBahnenStrings[geordneteFrästeileIndizes[i]].length;
+	for(let u=0;u<num;u++) _getEl(i+'_'+u).addEventListener('mousedown', function(){zeigKontur(i,u);} );
+}
+
+can=_getEl('can');
+ctx=can.getContext('2d');
+ctx.save();
+
+if(innerHeight<=innerWidth) faktor=(innerHeight-70)/height;// height wg. normaler dimension eines desktop-browserfensters
+else faktor=innerWidth/width;
+width*=faktor;
+height*=faktor;
+x=(innerWidth-width)/2;
+y=((innerHeight-70)-height)/2;
+
+ctx.fillStyle=bgColor;
+ctx.strokeStyle='black';
+ctx.fillRect(0,0, innerWidth, innerHeight-70);
+ctx.fillStyle=foregroundColor;
+ctx.fillRect(x,y, width, height);
+ctx.strokeRect(x,y, width, height);
+
+if(isSecure) {
+	_getEl('text').innerHTML=
+	'&#149; Der neue plt-Code wurde in die Zwischenablage kopiert.<br>'+
+	'&#149; Die farbigen Felder oben zeigen für jedes Teil die Reihenfolge der Fräsbahnen an (von links nach rechts). Klicke sie zur Kontrolle an!';
+}
+else {
+	_getEl('text').innerHTML='Alles OK? <a href="javascript:;">Klick hier!</a>';
+	_getEl('text').addEventListener('click', 
+	function(){document.body.innerHTML='<textarea id="newplt" value="" cols="25" rows="42" autocomplete="off"></textarea>';
+	let area=_getEl('newplt');area.value=plt;area.select();area.focus();}
+	);
+}
+
+let drawMillings=function(index) {
+let farbIndex=colorIndizes[index];
+if(teil>-1 && index!=clickedNum) farbIndex=0;
+ctx.strokeStyle=penColors[farbIndex];
+ctx.beginPath();
+ctx.moveTo( x+(alleFräsbahnenPunkte[index][0][0]-nullpunkt[0])*faktor, y+(alleFräsbahnenPunkte[index][0][1]-nullpunkt[1])*faktor );
+for(let u=1;u<alleFräsbahnenPunkte[index].length;u++) 
+	ctx.lineTo(x+(alleFräsbahnenPunkte[index][u][0]-nullpunkt[0])*faktor, y+(alleFräsbahnenPunkte[index][u][1]-nullpunkt[1])*faktor);
+//ctx.closePath();
+ctx.stroke();
+};
+
+for(let i=0;i<alleFräsbahnen.length;i++) drawMillings(i);//zeichne alle Fräsbahnen:
+if(teil>-1) drawMillings(clickedNum);//falls angeklickt, Bahn nochmal obendrauf zeichnen
+
+if(teil==-1&&frästeileStartPunkte.length>1) {//Zeichne Reihenfolge der großen Frästeile gestrichelt:
+	ctx.setLineDash([2,5]);
+	ctx.strokeStyle='red';
+	ctx.lineWidth=2;
+	ctx.beginPath();
+	ctx.moveTo(x, y);
+	for(let u=0;u<frästeileMittelPunkte.length;u++) {
+		let index=geordneteFrästeileIndizes[u];
+		ctx.lineTo( x+(frästeileMittelPunkte[index][0]-nullpunkt[0])*faktor, y+(frästeileMittelPunkte[index][1]-nullpunkt[1])*faktor );
+	}
+	ctx.stroke();
+	ctx.restore();
+}
+
+ctx.restore();
+
+if(firstPaint){ 
+	addEventListener('resize', paintPlt);
+	addEventListener('mouseup', paintPlt );
+	_getEl('text').classList.add('slide');
+	if(isSecure) navigator.clipboard.writeText('IN;\nLT;\n'+plt+'SP0;');
+	plt='';
+	firstPaint=false;
+}
+ teil=-1; kontur=-1;
+}
+
+function _turn(s){let sTurned='';for(let i=s.length-1; i>-1; i--) sTurned=sTurned.concat(s.substring(i,i+1));return sTurned;}
+function _newOrder(str2, str1) {let at='@';return _turn(str1)+at+_turn(str2);}
+</script>
+
+</head>
+
+
+
+<body><div id="startLayout"><div style="position:relative; padding:25px; border:1px solid grey; border-radius: 12px; background-color:#eff4f6">
+<textarea id="plt_code" value="" cols="26" rows="41" placeholder="Hier den plt-Code einfügen!" autocomplete="off" oninput="sort()" autofocus></textarea><em>Mithilfe dieses Scripts kannst du die Fräsbahnen von HPGL-Dateien (*.plt), die du in Corel Draw<br>
+erstellt hast, sinnvoll sortieren lassen, sodass Bahnen, die mit mehreren Zustellungen<br>
+gefräst werden sollen, in korrekter Reihenfolge in WinPC-NC gefräst werden. Außerdem werden<br>
+alle Kontur-Bahnen einer Form direkt nacheinander gestellt, was enorme Fahrwege erspart.<br>
+Die meisten Fräsjobs lassen sich somit oft in nur einem Arbeitsgang durchführen.</em><br>
+<br>
+&#149; &#149; &#149; <i>Folgendes gilt es in Corel Draw zu beachten:</i> &#149; &#149; &#149;<br>
+
+&#149; Zeichne als erstes ein schwarzes Rechteck, das die Dimensionen des Holzbrettes o.Ä. hat, <br>
+aus dem du die Teile fräsen willst. Sortiere alles andere innerhalb dieser Umrandung.<br>
+&#160;<br>
+&#149; Das A und O: Mach dir Gedanken über die Reihenfolge der Fräsbahnen! Nimm nur die<br>
+Farben der Export-Palette! Am besten, du erstellst dir in Corel eine eigene Palette mit den<br>
+folgenden Farben in dieser Reihenfolge: schwarz, blau, rot, grün, magenta, gelb, cyan und braun.<br>
+&#160;<br>
+&#160;<br>
+(Fräsbahnen in einer Farbe, die weiter am Anfang steht, werden vor denen gefräst, <br>
+deren Farbe dahinter steht (also z.B. wird eine blaue Bahn vor einer roten gefräst).<br>
+&#160;<br>
+&#149; Zeichne außer der Umrandung nur die Teile in schwarz, die in Originalgröße gezeichnet wurden.<br>
+Da du diese Bahnen später nicht fräsen willst, wirst du sie dann auf inaktiv stellen genauso <br>
+wie das Umrandungs-Rechteck, was deine Materialplatte darstellt. Und: <u style="text-decoration: underline;">vermeide Füllungen</u>, denn sie führen im plt-code zu<br>
+bösen Überraschungen. Das gilt besonders für Text. Er muss vor dem Export in Corel in eine Kurve konvertiert werden.<br>
+Entferne danach die Füllung und setze den Stift auf die Farbe deiner Wahl. Du fräst dann allerdings die Umrandung der Buchstaben.<br>
+&#160;<br>
+&#149; Um jedes Frästeil inkl. seiner Kontur-Fräsbahnen muss sich ein braunes Rechteck befinden, was keines dieser Bahnen berührt<br>
+(Bahnen eines anderen Frästeiles darf es aber berühren). Alle Vierecke in braun werden vom Skript für nur diesen Zweck interpretiert.<br>
+Aber du kannst alle anderen Fräsbahnen durchaus in braun zeichnen (nur eben keine Vierecke)...<br>
+&#160;<br>
+&#149; ... außer bei Bohrungen, denn die zeichnest du mit kleinen, braunen Quadraten, die unbedingt eine Kantenlänge von 1 mm haben<br>
+müssen. Vergiss nicht, auch um jede dieser Bohrungen ein braunes Rechteck zu ziehen, falls sie sich nicht schon innerhalb eines<br>
+braunen Rechtecks befinden z.B. um ein Frästeil später mit einer Schraube zu fixieren. In diesem Fall darfst du natürlich keine<br>
+andere Fräsbahn in braun zeichnen, sonst fräst du später sowohl die Schraube als auch deinen Fräser kaputt.<br>
+&#149; &#149; &#149; <i>Wichtige Exporteinstellungen in Corel Draw:</i> <br>
+Stiftbibliotheken: Standard&#160;&#160;&#149;&#160;&#160;Plotter-Ursprung: links unten&#160;&#160;&#149;&#160;&#160;verborgene Linien entfernen&#160;&#160;&#149;&#160;&#160;skalieren 100%<br>
+Plotter-Einheiten: 1016&#160;&#160;&#149;&#160;&#160;keine Breiten- oder Geschwindigkeitsbefehle&#160;&#160;&#149;&#160;&#160;Füllung: keine<br>
+Kurven-Auflösung: 0,5 mm (funktioniert bei mir auch mit anderen Werten - einfach ausprobieren).&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;<em id="quest" style="text-decoration:underline;"></em>
+<div id="palette"></div></div></div>
+</body> 
+ <script>
+ let paletteHTML='';
+ addEventListener('load',function(){_getEl('quest').innerHTML=_newOrder('>a/<?negnugernA redo negarF>"eulb:roloc"=elyts "ed.liamlebak','nnamuenrhc:otliam"=ferh a<');});
+for(let u=1;u<penColors.length;u++) {paletteHTML=paletteHTML.concat('<u class="exportcolors" style="left:'+(2+(u-1)*19)+'px; background-color:'+penColors[u]+'"></u>');}
+_getEl('palette').innerHTML=paletteHTML;
+</script>
+</html>
